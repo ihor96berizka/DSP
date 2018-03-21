@@ -4,14 +4,16 @@
 #include <cmath>
 #include <QDebug>
 #include <algorithm>
-#include <QtCharts/QChartView>
-#include <QtCharts/QLineSeries>
+
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
+  // m_signal_x(m_nPoints), m_signal_y(m_nPoints)
 {
     ui->setupUi(this);
+    m_signal_x = std::move(std::vector<double>(m_nPoints));
+    m_signal_y = std::move(std::vector<double>(m_nPoints));
 
     createActions();
     createMenus();
@@ -20,39 +22,64 @@ MainWindow::MainWindow(QWidget *parent) :
 MainWindow::~MainWindow()
 {
     delete ui;
+
+    delete m_chart;
+    delete m_series;
+    delete m_chart_view;
 }
 
 void MainWindow::createMenus()
 {
     m_menu_calculate = menuBar()->addMenu(tr("Calculate"));
     m_menu_calculate->addAction(m_action_convolve);
+    m_menu_calculate->addAction(m_action_scale);
+    m_menu_calculate->addAction(m_action_reverse_time);
+    m_menu_calculate->addAction(m_action_distension_time);
+    m_menu_calculate->addAction(m_action_shift_time);
 
     m_menu_generate = menuBar()->addMenu(tr("Generate"));
     m_menu_generate->addAction(m_action_generate);
 
     m_menu_plot = menuBar()->addMenu(tr("Plot"));
     m_menu_plot->addAction(m_action_impulsePlot);
+    m_menu_plot->addAction(m_action_modifiedDataPlot);
 }
 
 void MainWindow::createActions()
 {
     m_action_convolve = new QAction(tr("Convolve"), this);
-    connect(m_action_convolve, &QAction::triggered, this, &MainWindow::calculateConvolve);
+    connect(m_action_convolve, &QAction::triggered, this, &MainWindow::slotConvolve);
+
+    m_action_scale = new QAction(tr("Scale"), this);
+    connect(m_action_scale, &QAction::triggered, this, &MainWindow::slotScale);
+
+    m_action_reverse_time = new QAction(tr("Reverse"), this);
+    connect(m_action_reverse_time, &QAction::triggered, this, &MainWindow::slotReverseTime);
+
+    m_action_distension_time = new QAction(tr("Time distension"), this);
+    connect(m_action_distension_time, &QAction::triggered, this, &MainWindow::slotDistensionTime);
+
+    m_action_shift_time = new QAction(tr("Time shift"), this);
+    connect(m_action_shift_time, &QAction::triggered, this, &MainWindow::slotShiftTime);
+
 
     m_action_generate = new QAction(tr("Generate signal"), this);
-    connect(m_action_generate, &QAction::triggered, this, &MainWindow::generateData);
+    connect(m_action_generate, &QAction::triggered, this, &MainWindow::slotGenerateData);
 
     m_action_impulsePlot = new QAction(tr("Plot signal"), this);
-    connect(m_action_impulsePlot, &QAction::triggered, this, &MainWindow::plotData);
+    connect(m_action_impulsePlot, &QAction::triggered, this, &MainWindow::slotPlotData);
+
+    m_action_modifiedDataPlot = new QAction(tr("Plot Modified data"), this);
+    connect(m_action_modifiedDataPlot, &QAction::triggered, this, &MainWindow::slotPlotModifyedData);
 }
 
 //обчислення згортки двох сигналів
-void MainWindow::calculateConvolve()
+void MainWindow::slotConvolve()
 {
     m_signal_x = {1, 2, 3};
     m_signal_y = {1, 3, 5};
     m_signal_convolve = std::vector<double>(m_signal_x.size() +
-                                           m_signal_y.size() - 1);
+                                            m_signal_y.size() - 1);
 
     std::reverse(m_signal_y.begin(), m_signal_y.end());
 
@@ -71,11 +98,8 @@ void MainWindow::calculateConvolve()
     }
 }
 //генерування сигналів
-void MainWindow::generateData()
+void MainWindow::slotGenerateData()
 {
-    m_signal_x.clear();
-    m_signal_y.clear();
-
     const double l_Amp1 = 1;
     const double l_Amp2 = 1;
     const double l_Freq1 = 100;
@@ -85,24 +109,74 @@ void MainWindow::generateData()
     double dt = 1.0 / l_nyqist_freq;
     for (int i = 0; i < m_nPoints; ++i)
     {
-        m_signal_x.push_back(l_Amp1 * std::sin(2. * M_PI * l_Freq1 * i * dt) +
-                             l_Amp2 * std::sin(2. * M_PI * l_Freq2 * i * dt));
+        m_signal_x.at(i) = l_Amp1 * std::sin(2. * M_PI * l_Freq1 * i * dt) +
+                l_Amp2 * std::sin(2. * M_PI * l_Freq2 * i * dt);
     }
 }
 
-void MainWindow::plotData()
+void MainWindow::slotPlotData()
 {
-    QtCharts::QLineSeries* l_series = new QtCharts::QLineSeries();
+    m_series = new QtCharts::QLineSeries();
+    for (int i = 0; i < m_nPoints; ++i)
+    {
+        m_series->append(i, m_signal_x.at(i));
+    }
+    m_chart = new QtCharts::QChart();
+    m_chart->addSeries(m_series);
+    m_chart->createDefaultAxes();
+    m_chart->axisY()->setRange(*std::min_element(m_signal_x.cbegin(), m_signal_x.cend()),
+                                   *std::max_element(m_signal_x.cbegin(), m_signal_x.cend()));
+    m_chart_view = new QtCharts::QChartView(m_chart);
+    this->setCentralWidget(m_chart_view);
+}
+
+void MainWindow::slotPlotModifyedData()
+{
+    if (m_series != nullptr)
+    {
+        m_series->clear();
+    }
 
     for (int i = 0; i < m_nPoints; ++i)
     {
-        l_series->append(i, m_signal_x.at(i));
+        m_series->append(i, m_signal_y.at(i));
     }
+    m_chart->axisY()->setRange(*std::min_element(m_signal_y.cbegin(), m_signal_y.cend()),
+                                   *std::max_element(m_signal_y.cbegin(), m_signal_y.cend()));
+}
 
-    QtCharts::QChart* l_chart = new QtCharts::QChart();
-    l_chart->addSeries(l_series);
-    l_chart->createDefaultAxes();
+void MainWindow::slotScale()
+{
+    const double alp = 2;
 
-    QtCharts::QChartView* l_chart_view = new QtCharts::QChartView(l_chart);
-    this->setCentralWidget(l_chart_view);
+
+    for (size_t i = 0; i < m_signal_x.size(); ++i)
+    {
+        m_signal_y[i] = alp * m_signal_x[i];
+    }
+}
+
+void MainWindow::slotReverseTime()
+{
+    m_signal_y = std::vector<double>(m_signal_x.crbegin(), m_signal_x.crend());
+}
+
+void MainWindow::slotShiftTime()
+{
+    const size_t shift = 50;
+    std::fill(m_signal_y.begin(), m_signal_y.end(), 0);
+    for (size_t i = 0; i < m_nPoints - shift; ++i)
+    {
+        m_signal_y[i] = m_signal_x[i + shift];
+    }
+}
+
+void MainWindow::slotDistensionTime()
+{
+    const size_t shift = 5;
+    std::fill(m_signal_y.begin(), m_signal_y.end(), 0);
+    for (size_t i = 0; i < m_nPoints / shift; ++i)
+    {
+        m_signal_y[i] = m_signal_x[i * shift];
+    }
 }
