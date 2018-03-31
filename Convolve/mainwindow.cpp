@@ -17,6 +17,7 @@ MainWindow::MainWindow(QWidget *parent) :
 
     createActions();
     createMenus();
+    m_isDFT = false;
 }
 
 MainWindow::~MainWindow()
@@ -28,6 +29,27 @@ MainWindow::~MainWindow()
     delete m_chart_view;
 }
 
+std::vector<std::complex<double> > MainWindow::DFT(std::vector<std::complex<double> > data)
+{
+    int n = data.size();
+    std::vector<std::complex<double>> outData(n);
+
+    for (int i = 0; i < n; ++i)
+    {
+        double sumR = 0.0;
+        double sumI = 0.0;
+        for (int j = 0; j < n; ++j)
+        {
+            double a = 2 * M_PI * j * i / n;
+            sumR += data[j].real() * cos(a) + data[j].imag() * sin(a);
+            sumI += -data[j].real() * sin(a) + data[j].imag() * cos(a);
+        }
+        outData[i].real(sumR);
+        outData[i].imag(sumI);
+    }
+    return std::move(outData);
+}
+
 void MainWindow::createMenus()
 {
     m_menu_calculate = menuBar()->addMenu(tr("Calculate"));
@@ -36,6 +58,7 @@ void MainWindow::createMenus()
     m_menu_calculate->addAction(m_action_reverse_time);
     m_menu_calculate->addAction(m_action_distension_time);
     m_menu_calculate->addAction(m_action_shift_time);
+    m_menu_calculate->addAction(m_action_DFT);
 
     m_menu_generate = menuBar()->addMenu(tr("Generate"));
     m_menu_generate->addAction(m_action_generate);
@@ -62,6 +85,8 @@ void MainWindow::createActions()
     m_action_shift_time = new QAction(tr("Time shift"), this);
     connect(m_action_shift_time, &QAction::triggered, this, &MainWindow::slotShiftTime);
 
+    m_action_DFT = new QAction(tr("DFT"), this);
+    connect(m_action_DFT, &QAction::triggered, this, &MainWindow::slotDFT);
 
     m_action_generate = new QAction(tr("Generate signal"), this);
     connect(m_action_generate, &QAction::triggered, this, &MainWindow::slotGenerateData);
@@ -96,22 +121,24 @@ void MainWindow::slotConvolve()
     {
         qDebug() << item;
     }
+     m_isDFT = false;
 }
 //генерування сигналів
 void MainWindow::slotGenerateData()
 {
-    const double l_Amp1 = 1;
-    const double l_Amp2 = 1;
+    const double l_Amp1 = 10;
+    const double l_Amp2 = 7;
     const double l_Freq1 = 100;
-    const double l_Freq2 = 150;
+    const double l_Freq2 = 200;
 
-    double l_nyqist_freq = 13.5 * std::max(l_Freq1, l_Freq2);
-    double dt = 1.0 / l_nyqist_freq;
+    double l_nyqist_freq = 5 * std::max(l_Freq1, l_Freq2);
+    m_dt = 1.0 / l_nyqist_freq;
     for (int i = 0; i < m_nPoints; ++i)
     {
-        m_signal_x.at(i) = l_Amp1 * std::sin(2. * M_PI * l_Freq1 * i * dt) +
-                l_Amp2 * std::sin(2. * M_PI * l_Freq2 * i * dt);
+        m_signal_x.at(i) = l_Amp1 * std::cos(2. * M_PI * l_Freq1 * i * m_dt)
+                + l_Amp2 * std::cos(2. * M_PI * l_Freq2 * i * m_dt);
     }
+    m_isDFT = false;
 }
 
 void MainWindow::slotPlotData()
@@ -125,7 +152,7 @@ void MainWindow::slotPlotData()
     m_chart->addSeries(m_series);
     m_chart->createDefaultAxes();
     m_chart->axisY()->setRange(*std::min_element(m_signal_x.cbegin(), m_signal_x.cend()),
-                                   *std::max_element(m_signal_x.cbegin(), m_signal_x.cend()));
+                               *std::max_element(m_signal_x.cbegin(), m_signal_x.cend()));
     m_chart_view = new QtCharts::QChartView(m_chart);
     this->setCentralWidget(m_chart_view);
 }
@@ -137,12 +164,24 @@ void MainWindow::slotPlotModifyedData()
         m_series->clear();
     }
 
-    for (int i = 0; i < m_nPoints; ++i)
+    if (!m_isDFT)
     {
-        m_series->append(i, m_signal_y.at(i));
+        for (int i = 0; i < m_nPoints; ++i)
+        {
+            m_series->append(i, m_signal_y.at(i));
+        }
     }
+    else
+    {
+        for (int i = 0; i < m_nPoints; ++i)
+        {
+            m_series->append((1.0 / m_dt) / m_nPoints * i, m_signal_y.at(i));
+        }
+    }
+
     m_chart->axisY()->setRange(*std::min_element(m_signal_y.cbegin(), m_signal_y.cend()),
                                    *std::max_element(m_signal_y.cbegin(), m_signal_y.cend()));
+    m_chart->axisX()->setRange(0, (1.0 / m_dt) / m_nPoints * m_nPoints);
 }
 
 void MainWindow::slotScale()
@@ -154,11 +193,13 @@ void MainWindow::slotScale()
     {
         m_signal_y[i] = alp * m_signal_x[i];
     }
+    m_isDFT = false;
 }
 
 void MainWindow::slotReverseTime()
 {
     m_signal_y = std::vector<double>(m_signal_x.crbegin(), m_signal_x.crend());
+     m_isDFT = false;
 }
 
 void MainWindow::slotShiftTime()
@@ -169,6 +210,7 @@ void MainWindow::slotShiftTime()
     {
         m_signal_y[i] = m_signal_x[i + shift];
     }
+    m_isDFT = false;
 }
 
 void MainWindow::slotDistensionTime()
@@ -179,4 +221,24 @@ void MainWindow::slotDistensionTime()
     {
         m_signal_y[i] = m_signal_x[i * shift];
     }
+    m_isDFT = false;
+}
+
+void MainWindow::slotDFT()
+{
+    std::vector<std::complex<double>> inSig(m_nPoints);
+
+    for (int i = 0; i < m_nPoints; ++i)
+    {
+        inSig[i].real(m_signal_x[i]);
+        inSig[i].imag(0);
+    }
+
+    auto outData = DFT(inSig);
+
+    for (int i = 0; i < m_nPoints/2; ++i)
+    {
+        m_signal_y.at(i) = std::abs(outData[i]);
+    }
+    m_isDFT = true;
 }

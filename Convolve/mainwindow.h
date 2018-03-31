@@ -1,13 +1,14 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include <QtCharts/QLineSeries>
+#include <QtCharts/QChartView>
 #include <QMainWindow>
 #include <QAction>
-#include <vector>
 #include <QMenu>
 
-#include <QtCharts/QChartView>
-#include <QtCharts/QLineSeries>
+#include <complex>
+#include <vector>
 
 namespace Ui {
 class MainWindow;
@@ -22,6 +23,9 @@ public:
     ~MainWindow();
 
 private:
+    //дискретне перетворення Фур'є
+    std::vector<std::complex<double>> DFT(std::vector<std::complex<double>> data);
+
     Ui::MainWindow *ui;
 
     QMenu* m_menu_calculate;
@@ -35,6 +39,7 @@ private:
     QAction* m_action_shift_time;
     QAction* m_action_reverse_time;
     QAction* m_action_distension_time;
+    QAction* m_action_DFT;
 
     //меню відображення сигналу
     QAction* m_action_modifiedDataPlot;
@@ -49,7 +54,9 @@ private:
     std::vector<double> m_signal_x;
     std::vector<double> m_signal_y;
     std::vector<double> m_signal_convolve;
-
+    //для того щоб знати чи зараз малювати Фур'є
+    bool m_isDFT;
+    double m_dt;
 private:
     void createMenus();
     void createActions();
@@ -63,6 +70,7 @@ private slots:
     void slotReverseTime();
     void slotShiftTime();
     void slotDistensionTime();
+    void slotDFT();
 signals:
     //не виходить причепити до сигналу QAction::triggered
     void plot_data_signal(std::vector<double> data);
